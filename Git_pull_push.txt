@@ -1,0 +1,23 @@
+Getting Future Updates They Push
+git fetch origin
+git checkout ashish
+git merge origin/Juliane
+
+Sanity check (DO THIS)
+git branch
+If you see * ashish, you are 100% safe.
+
+Copy the file into the repo folder
+Just do this like a normal human being 😄:
+Open File Explorer
+Copy your text file (e.g. requirements.txt)
+Paste it into:practical_course_lab_3/
+(the root of the repo)
+git status
+You should see:
+Untracked files:
+  requirements.txt
+
+git add requirements.txt
+git commit -m "Add local requirements.txt for development"
+git push origin ashish
