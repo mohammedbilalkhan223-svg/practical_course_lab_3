@@ -1,25 +1,29 @@
 import time
 import paho.mqtt.client as mqtt
 
-HOSTNAME = "127.0.0.1" #of brocker
+BROKER = "127.0.0.1" #of brocker
 PORT = 1883
 TOPIC = "demo/chat"
-
+REPLY = "reply" #for task 5
 
 
 def on_message(client, userdata, message):
     print(message.topic, message.payload)
     if message.payload == b'quit':
-        client.unsubscribe(TOPIC)
+        time.sleep(1)
+        client.disconnect()
+        #client.unsubscribe(TOPIC)
+    elif message.payload != b'quit':
+        answer = "reply" #for task 5
+        client.publish(REPLY, answer.rstrip()) #for task 5
+        print(f"sent {answer} on {REPLY}")
 
 
-def on_unsubscribe(client, userdata, message, reason_code_list, properties):
-    client.disconnect(TOPIC)
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, "subscriber", clean_session=True)
+client.connect(BROKER, PORT)
 
-client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, "subscriber")
 client.on_message = on_message
-client.on_unsubscribe = on_unsubscribe
-client.connect(HOSTNAME, PORT)
+
 client.subscribe(TOPIC)
 client.loop_forever()
 client.loop_stop()
