@@ -36,14 +36,15 @@ def run_server() -> None:
             if msg.lower() == "stop client":
                 server_sock.sendto(b"Client may stop safely. Bye!\n", client_addr)
                 continue
-
-            # Bidirectional part: type a reply and send it back
-            reply_text = input("Server reply> ").strip()
+            '''
+            # Task 5-9: Bidirectional part: type a reply and send it back
+            #reply_text = input("Server reply> ").strip() #uncomment for input option for server as well
+            reply_text ="msg received at server"
             if not reply_text:
                 reply_text = "(empty reply)"
 
             server_sock.sendto((reply_text + "\n").encode("utf-8"), client_addr)
-
+            '''
         print("[UDP SERVER] Server terminated.")
 
 if __name__ == "__main__":

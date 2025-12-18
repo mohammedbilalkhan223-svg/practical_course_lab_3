@@ -29,16 +29,20 @@ def run_client() -> None:
                 continue
 
             client_sock.sendto((msg + "\n").encode("utf-8"), (SERVER_HOST, SERVER_PORT))
-
+            '''
+            # Task 5-9: expecting echo from server
             try:
                 data, _ = client_sock.recvfrom(RECV_BUFFER)
                 print("Server>", data.decode("utf-8", errors="replace").strip())
             except socket.timeout:
                 print("[UDP CLIENT] No reply (timeout).")
-
-            if msg.lower() in ("stop client", "stop server"):
+            '''
+            #if msg.lower() in ("stop client", "stop server"):
+            if msg.lower() in ("stop client"):
                 print("[UDP CLIENT] Terminating now.")
                 break
+            elif msg.lower() in ("stop server"):
+                print("[UDP CLIENT] Server terminating.")
 
 if __name__ == "__main__":
     try:
