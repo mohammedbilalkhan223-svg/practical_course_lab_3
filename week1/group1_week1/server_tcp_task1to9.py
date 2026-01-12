@@ -26,14 +26,17 @@ def start_server():
                 print("Stopping server...")
                 conn.sendall("Server shutting down.".encode())
                 break
-
-            # Ask server user for reply
-            reply = input("Enter reply to client: ")
+            '''
+            # Task 5-9: Bidirectional part: type a reply and send it back (comment out for only task 1-4)
+            #reply = input("Enter reply to client: ") # Ask server user for reply
+            reply = "echo"
             conn.sendall(reply.encode())
-
+            # End of task 5-9
+            '''
             if reply.lower() == "stop server":
                 print("Server termination requested. Closing server.")
                 break
+
 
     finally:
         conn.close()
