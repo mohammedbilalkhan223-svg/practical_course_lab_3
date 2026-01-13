@@ -133,7 +133,7 @@ def get_hil_scenarios():
 
     target = [0.9 * x * unit for x in [60, 40, 20, 0, -20, -40, -60, -80, -100, 0, 0, 0, 0]]
     c_dev = 10
-    max_rel_rand = 0.0
+    max_rel_rand = 0.1
     devices = get_hil_device_specs(c_load, c_other, c_other)
 
     p1 = deepcopy(SchedulingProblem(target, devices, c_dev, max_rel_rand))

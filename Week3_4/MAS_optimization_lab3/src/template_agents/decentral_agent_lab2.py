@@ -155,45 +155,21 @@ class DecentralAgent(Agent):
             return
         
         if isinstance(content, SetDoneMsg) and is_observer:
-            self.done.set_result(True)
+            if not self.done.done():
+                self.done.set_result(True)
 
         if self.failed:
             # controller has exploded
             return
 
         if isinstance(content, TargetUpdateMsg) and is_observer:
-            # only do this if its not already active or
+            #only do this if its not already active or
             # we get an asyncio/scheduler error!
             if self.target_update_task is not None and not self.target_update_task.done():
                 self.target_update_task.cancel()
 
             self.target_update_task = self.schedule_instant_task(self.handle_target_update(content, meta))
-
-        if isinstance(content, NotifyReadyRequestMsg) and is_observer:
-            self.schedule_instant_task(self.handle_ready_request(sender))
-        
-        if isinstance(content, StateReplyMsg) and is_device:
-            self.schedule_instant_task(self.handle_state_reply(content))
-        if isinstance(content, SetDoneMsg):
-            self.done.set_result(True)
-
-        if isinstance(content, StateReplyMsg):
-            self.schedule_instant_task(self.handle_state_reply(content))
-
-        if isinstance(content, IdentifyAgentsMsg):
-            self.schedule_instant_task(self.handle_identify_agents(content, sender, meta))
-
-        if isinstance(content, NewGlobalBestMsg):
-            if content.sender_aid not in self.received_PSO_replies:
-                self.schedule_instant_task(self.handle_NewGlobalBestMsg(content, sender))
-            else:
-                print(self.aid, "already received msg from sender")
-
-        if isinstance(content, InitialScheduleMsg):
-            if not self.schedule_updated.done():
-                self.schedule_instant_task(self.handle_InitialScheduleMsg(content, sender))
-            else:
-                print(self.aid, "received initial schedule but already got all")
+            #print(self.aid, "received target update")
 
 
         # -------------------------------------
@@ -226,7 +202,32 @@ class DecentralAgent(Agent):
             # nothing for now
             # will become relevant in lab 3
             pass
+        if isinstance(content, NotifyReadyRequestMsg) and is_observer:
+            self.schedule_instant_task(self.handle_ready_request(sender))
 
+        if isinstance(content, StateReplyMsg) and is_device:
+            self.schedule_instant_task(self.handle_state_reply(content))
+        if isinstance(content, SetDoneMsg):
+            if not self.done.done():
+                self.done.set_result(True)
+
+        if isinstance(content, StateReplyMsg):
+            self.schedule_instant_task(self.handle_state_reply(content))
+
+        if isinstance(content, IdentifyAgentsMsg):
+            self.schedule_instant_task(self.handle_identify_agents(content, sender, meta))
+
+        if isinstance(content, NewGlobalBestMsg):
+            if content.sender_aid not in self.received_PSO_replies:
+                self.schedule_instant_task(self.handle_NewGlobalBestMsg(content, sender))
+            else:
+                print(self.aid, "already received msg from sender")
+
+        if isinstance(content, InitialScheduleMsg):
+            #if not self.schedule_updated.done():
+                self.schedule_instant_task(self.handle_InitialScheduleMsg(content, sender))
+            #else:
+            #    print(self.aid, "received initial schedule but already got all")
 
     async def handle_ready_request(self, sender):
         await self.init_schedule_done
@@ -240,7 +241,7 @@ class DecentralAgent(Agent):
         await self.get_device_state_update()
         self.target[content.t] = content.value
         self.t = content.t
-        remaining_target = self.target[content.t :]
+        remaining_target = self.target[content.t:]
         await self.reschedule(remaining_target, content.t)
 
     ### Helper function
@@ -313,7 +314,8 @@ class DecentralAgent(Agent):
             await self.forward_msg(content, sender) #forward the msg
             if len(self.GB_schedules) == self.n_agents:
                 print(self.aid, "Received as many schedueles as I know agents, setting future")
-                self.schedule_updated.set_result(True) #all initial schedules arrived
+                if not self.schedule_updated.done():
+                   self.schedule_updated.set_result(True) #all initial schedules arrived
                 print(self.aid, "schedule updated future set")
         else:
             pass
@@ -411,7 +413,7 @@ class DecentralAgent(Agent):
         p_min = self.device_state.p_min
         c_op = self.device_c_op
         init_schedule = [np.random.uniform(p_min, p_max, target_length)]
-        print("init_schedule: ", init_schedule)
+        print(self.aid, "init_schedule: ", init_schedule)
         #init_schedule, init_cost = ED_solve(devices, self.committed, agent_target,c_dev)  # to ensure initial schedule meets all constraints we use ED solve
         # init_schedule = [0.5 * self.device_state.p_max for _ in range(len(self.target))]
         self.device_schedule = init_schedule
@@ -436,11 +438,12 @@ class DecentralAgent(Agent):
         await self.best_schedule_found  # wait for PSO to find best schedule
         print(self.aid, "best schedule found ")
         self.device_schedule = self.GB_schedules[self.aid][0]
+        self.update_my_device_schedule()
         # await self.update_device_schedule()
         if not self.init_schedule_done.done():
             self.init_schedule_done.set_result(True)
         # don't change this flag being set or the run script will hang
-        self.init_schedule_done.set_result(True)
+        #self.init_schedule_done.set_result(True)
 
     def constraint_cost(self, schedules):
         constraint_penalty = 0.0
