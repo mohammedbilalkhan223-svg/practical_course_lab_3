@@ -143,6 +143,7 @@ class DecentralAgent(Agent):
         if isinstance(content, TargetUpdateMsg) and is_observer:
             # only do this if its not already active or
             # we get an asyncio/scheduler error!
+            print(self.aid, "received target update")
             if self.target_update_task is not None and not self.target_update_task.done():
                 self.target_update_task.cancel()
 
@@ -212,8 +213,8 @@ class DecentralAgent(Agent):
         await self.get_device_state_update()
         self.target[content.t] = content.value
         self.t = content.t
-        # remaining_target = self.target[content.t :]
-        # await self.reschedule(remaining_target, content.t)
+        remaining_target = self.target[content.t :]
+        await self.reschedule(remaining_target, content.t)
 
     async def send_to_neighbors(self, msg):
         for n in self.neighbors():
@@ -325,7 +326,7 @@ class DecentralAgent(Agent):
             )
 
         obj_f = sum(model.problem_cost[t] + model.device_cost[t] for t in range(n_steps-1))
-        model.goal = pyo.Objective(expr=obj_f, sense=pyo.minimize)
+        model.goal = pyo.Objective(expr=obj_f)
 
         return model
 
@@ -356,8 +357,8 @@ class DecentralAgent(Agent):
         remaining_target.append(0)
 
         model = self.get_pyomo_model(remaining_target)
-        pyo.SolverFactory("appsi_highs").solve(model)
-
+        #pyo.SolverFactory("appsi_highs").solve(model)
+        pyo.SolverFactory('gurobi').solve(model)
         data = list(model.p_device.extract_values().values())
         # remove last value as it was only dummy for soc constraint
         data = data[:-1]
@@ -398,7 +399,8 @@ class DecentralAgent(Agent):
         # don't change this flag being set or the run script will hang
         self.init_schedule_done.set_result(True)
 
-    # async def reschedule(self, remaining_target, t):
-    #     # TODO
-    #     # Add your rescheduling logic as necessary
-    #     self.update_my_device_schedule()
+    async def reschedule(self, remaining_target, t):
+         # Add your rescheduling logic as necessary
+         await self.get_device_state_update()
+         self.schedule_instant_task(self.optimization_loop())
+         #await asyncio.sleep(5)

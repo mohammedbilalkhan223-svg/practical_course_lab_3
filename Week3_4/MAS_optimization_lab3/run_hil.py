@@ -15,6 +15,7 @@ from src.sim_environment.optimization_problem import *
 
 # -------------------
 from src.template_agents.decentral_agent_lab2 import DecentralAgent
+#from src.template_agents.new_decentral_agent_rescheduling import DecentralAgent
 #from src.agent_setups.my_new_decentral_agent import DecentralAgent
 from Week3_4.MAS_optimization_lab3.scenarios.hil_scenarios import get_hil_scenarios, SCENARIO_NR, RNG_SEED
 # -------------------
@@ -156,7 +157,6 @@ def plot_results(obs):
 
     plt.cla()
     plt.plot(x, obs.final_problem.target, label = "target power")
-    plt.plot(x, total_power, label ="total power", linestyle = "--")
     print(f"target: {obs.final_problem.target}")
     for i, schedule in enumerate(device_powers):
         added_string = ""
@@ -170,6 +170,7 @@ def plot_results(obs):
         l = f"device_{i}_{added_string}"
         plt.plot(x, schedule, label = l)
         print(f"schedule: {l} - {schedule}")
+    plt.plot(x, total_power, label ="total power", linestyle = "--")
     plt.legend()
     plt.show()
 

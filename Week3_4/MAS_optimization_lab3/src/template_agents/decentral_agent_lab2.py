@@ -102,7 +102,13 @@ class DecentralAgent(Agent):
         self.msg_backlog = []
         self.rescheduling_done = asyncio.Future()
         self.original_target = deepcopy(target)
+
+    """
     def on_register(self):
+        self.schedule_instant_task(self.create_initial_schedule())
+    """
+
+    def on_start(self):
         self.schedule_instant_task(self.create_initial_schedule())
 
     def get_edge_loss_rate(self, sender):
@@ -165,11 +171,11 @@ class DecentralAgent(Agent):
         if isinstance(content, TargetUpdateMsg) and is_observer:
             #only do this if its not already active or
             # we get an asyncio/scheduler error!
-            if self.target_update_task is not None and not self.target_update_task.done():
-                self.target_update_task.cancel()
+            #if self.target_update_task is not None and not self.target_update_task.done():
+            #    self.target_update_task.cancel()
 
-            self.target_update_task = self.schedule_instant_task(self.handle_target_update(content, meta))
-            #print(self.aid, "received target update")
+            #self.target_update_task = self.schedule_instant_task(self.handle_target_update(content, meta))
+            print(self.aid, "received target update")
 
 
         # -------------------------------------
@@ -207,12 +213,7 @@ class DecentralAgent(Agent):
 
         if isinstance(content, StateReplyMsg) and is_device:
             self.schedule_instant_task(self.handle_state_reply(content))
-        if isinstance(content, SetDoneMsg):
-            if not self.done.done():
-                self.done.set_result(True)
 
-        if isinstance(content, StateReplyMsg):
-            self.schedule_instant_task(self.handle_state_reply(content))
 
         if isinstance(content, IdentifyAgentsMsg):
             self.schedule_instant_task(self.handle_identify_agents(content, sender, meta))
@@ -431,7 +432,8 @@ class DecentralAgent(Agent):
 
 
     async def create_initial_schedule(self):
-        await asyncio.sleep(3)
+        #await self.get_device_state()
+        #await asyncio.sleep(3)
         target_length = len(self.target)
         print(self.aid, "creating initial schedule")
         await self.set_starting_schedule(target_length)  # creates bit random but working initial schedule

@@ -11,11 +11,14 @@ import sys
 
 if len(sys.argv) > 2 and sys.argv[2] == "ideal":
     from src.sim_environment.devices.ideal import *
+    STEP_TIME_S = 5
 else:
     from src.sim_environment.devices.hil import *
+    STEP_TIME_S = 12
 
 HIL_IP = "10.51.6.211"
-STEP_TIME_S = 5
+#STEP_TIME_S = 5
+
 SCENARIO_NR = 0
 RNG_SEED = 1
 
@@ -79,6 +82,7 @@ def get_hil_device_specs(c_load, c_fuel, c_bat):
     f1 = IdealDevice(IdealFuelCellState(HIL_FUEL_AMOUNT, HIL_FUEL_P_MAX, HIL_FUEL_CHANGE_MAX, HIL_FUEL_P_PREV, F1_P_READ, F1_P_SET), c_fuel)
     f2 = IdealDevice(IdealFuelCellState(HIL_FUEL_AMOUNT, HIL_FUEL_P_MAX, HIL_FUEL_CHANGE_MAX, HIL_FUEL_P_PREV, F2_P_READ, F2_P_SET), c_fuel)
     return [l1, l2,  b1, b2, f1, f2]
+    #return [l1, b1, f1]
 
 
 def get_hil_scenarios():
@@ -138,6 +142,7 @@ def get_hil_scenarios():
 
     p1 = deepcopy(SchedulingProblem(target, devices, c_dev, max_rel_rand))
 
+
     adj1 = [
         [0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0],
@@ -146,10 +151,19 @@ def get_hil_scenarios():
         [0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0]
     ]
-
+    """
+    adj1 = [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0]
+    ]
+    """
     d_fail_time1 = [-1, -1, -1, -1, -1, -1]
+    #d_fail_time1 = [-1, -1, -1]
     hil_drop_rate1 = [-1, -1, -1, -1, -1, -1]
+    #hil_drop_rate1 = [-1, -1, -1]
     c_fail_time1 = [-1, -1, -1, -1, -1, -1]
+    #c_fail_time1 = [-1, -1, -1]
 
     s1 = (STEP_TIME_S, adj1, p1, d_fail_time1, hil_drop_rate1, c_fail_time1)
 
