@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from mango.messages.codecs import json_serializable, JSON
-from typing import Union
 from src.sim_environment.devices.abstract import AbstractState
 
 import sys
@@ -9,17 +8,18 @@ if len(sys.argv) > 2 and sys.argv[2] == "ideal":
 else:
     from src.sim_environment.devices.hil import *
 
-
 SCENARIO_CODEC = JSON()
-# state types
+
+# ------------------------------
+# State serializers
+# ------------------------------
 SCENARIO_CODEC.add_serializer(*IdealBatteryState.__serializer__())
 SCENARIO_CODEC.add_serializer(*IdealLoadState.__serializer__())
 SCENARIO_CODEC.add_serializer(*IdealFuelCellState.__serializer__())
 
-# predefined msg types
-#------------------------------
+# ------------------------------
 # Both
-#------------------------------
+# ------------------------------
 @json_serializable
 @dataclass
 class SetDoneMsg:
@@ -27,9 +27,9 @@ class SetDoneMsg:
 
 SCENARIO_CODEC.add_serializer(*SetDoneMsg.__serializer__())
 
-#------------------------------
-# Device Agent
-#------------------------------
+# ------------------------------
+# Device-side (Observer acting as “device gateway”)
+# ------------------------------
 @json_serializable
 @dataclass
 class StateRequestMsg:
@@ -61,12 +61,14 @@ class SetScheduleReplyMsg:
 
 SCENARIO_CODEC.add_serializer(*SetScheduleReplyMsg.__serializer__())
 
+
 @json_serializable
 @dataclass
 class StepMsg:
     t: int
 
 SCENARIO_CODEC.add_serializer(*StepMsg.__serializer__())
+
 
 @json_serializable
 @dataclass
@@ -75,12 +77,14 @@ class StepReplyMsg:
 
 SCENARIO_CODEC.add_serializer(*StepReplyMsg.__serializer__())
 
+
 @json_serializable
 @dataclass
 class ResultLogRequestMsg:
     pass
 
 SCENARIO_CODEC.add_serializer(*ResultLogRequestMsg.__serializer__())
+
 
 @json_serializable
 @dataclass
@@ -90,10 +94,9 @@ class ResultLogMsg:
 
 SCENARIO_CODEC.add_serializer(*ResultLogMsg.__serializer__())
 
-#------------------------------
-# Control Agent
-#------------------------------
-# predefined msg types
+# ------------------------------
+# Control-side
+# ------------------------------
 @json_serializable
 @dataclass
 class TargetUpdateMsg:
@@ -103,7 +106,6 @@ class TargetUpdateMsg:
 SCENARIO_CODEC.add_serializer(*TargetUpdateMsg.__serializer__())
 
 
-# predefined msg types
 @json_serializable
 @dataclass
 class NotifyReadyRequestMsg:
@@ -111,7 +113,7 @@ class NotifyReadyRequestMsg:
 
 SCENARIO_CODEC.add_serializer(*NotifyReadyRequestMsg.__serializer__())
 
-# predefined msg types
+
 @json_serializable
 @dataclass
 class NotifyReadyMsg:
@@ -119,84 +121,45 @@ class NotifyReadyMsg:
 
 SCENARIO_CODEC.add_serializer(*NotifyReadyMsg.__serializer__())
 
-@json_serializable
-@dataclass
-class FailControllerMsg:
-    pass
-
-SCENARIO_CODEC.add_serializer(*FailControllerMsg.__serializer__())
-
-
-#------------------------------
-# Control Agent
-#------------------------------
-# predefined msg types
-@json_serializable
-@dataclass
-class TargetUpdateMsg:
-    t: int
-    value: float
-
-SCENARIO_CODEC.add_serializer(*TargetUpdateMsg.__serializer__())
-
-
-# predefined msg types
-@json_serializable
-@dataclass
-class NotifyReadyRequestMsg:
-    pass
-
-SCENARIO_CODEC.add_serializer(*NotifyReadyRequestMsg.__serializer__())
-
-# predefined msg types
-@json_serializable
-@dataclass
-class NotifyReadyMsg:
-    pass
-
-SCENARIO_CODEC.add_serializer(*NotifyReadyMsg.__serializer__())
 
 @json_serializable
 @dataclass
 class FailControllerMsg:
+    """Observer-triggered failure (used by scenario c_fail_time)."""
     pass
 
 SCENARIO_CODEC.add_serializer(*FailControllerMsg.__serializer__())
 
-
+# ============================================================
+# Task 10 — Failure detection messages (NEW)
+# ============================================================
 @json_serializable
 @dataclass
-class IdentifyAgentsMsg:
+class HeartbeatPingMsg:
     sender_aid: str
-    agents: dict
+    seq: int
+    ts: float  # monotonic timestamp (seconds)
 
-SCENARIO_CODEC.add_serializer(*IdentifyAgentsMsg.__serializer__())
-
-@json_serializable
-@dataclass
-class NewGlobalBestMsg:
-    sender_aid: str
-    GB_schedules: list[float]
-    GB_cost: float
-    PSO_iteration: float
-
-SCENARIO_CODEC.add_serializer(*NewGlobalBestMsg.__serializer__())
+SCENARIO_CODEC.add_serializer(*HeartbeatPingMsg.__serializer__())
 
 
 @json_serializable
 @dataclass
-class InitialScheduleMsg:
-    schedule: list[float]
-    c_op: float
+class HeartbeatPongMsg:
     sender_aid: str
+    seq: int
+    ts: float  # monotonic timestamp (seconds)
 
-SCENARIO_CODEC.add_serializer(*InitialScheduleMsg.__serializer__())
+SCENARIO_CODEC.add_serializer(*HeartbeatPongMsg.__serializer__())
+
 
 @json_serializable
 @dataclass
-class NoUpdateMsg:
-    sender_aid: str
+class AgentDownMsg:
+    """Gossip message: a controller agent is considered dead/out-of-negotiation."""
+    down_aid: str
+    reported_by: str
+    ts: float  # monotonic timestamp (seconds)
 
-SCENARIO_CODEC.add_serializer(*NoUpdateMsg.__serializer__())
-
+SCENARIO_CODEC.add_serializer(*AgentDownMsg.__serializer__())
 
