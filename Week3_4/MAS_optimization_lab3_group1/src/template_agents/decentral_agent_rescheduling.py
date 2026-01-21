@@ -68,7 +68,22 @@ class DecentralAgent(Agent):
         self.info_collection_fut = None
         self.target_update_task = None
         self.failed = False
+        self._opt_task = None
 
+    def _start_optimization_loop(self):
+        # start only if not already running
+        if self._opt_task is not None and not self._opt_task.done():
+            return
+        self._opt_task = self.schedule_instant_task(self.optimization_loop())
+
+    def _stop_optimization_loop(self):
+        if self._opt_task is None:
+            return
+        try:
+            if not self._opt_task.done():
+                self._opt_task.cancel()
+        except Exception:
+            pass
     def on_register(self):
         self.schedule_instant_task(self.create_initial_schedule())
 
@@ -120,11 +135,16 @@ class DecentralAgent(Agent):
         if isinstance(content, FailControllerMsg) and is_observer:
             print(self.aid, "controller failed")
             self.failed = True
+            # ✅ MINIMAL FIX: stop optimization so shutdown doesn't explode
+            self._stop_optimization_loop()
             return
 
         if isinstance(content, SetDoneMsg) and is_observer:
             if not self.done.done():
                 self.done.set_result(True)
+            # ✅ MINIMAL FIX: stop optimization so shutdown doesn't explode
+            self._stop_optimization_loop()
+            return
 
         if self.failed:
             # controller has exploded
@@ -225,10 +245,8 @@ class DecentralAgent(Agent):
     async def optimization_loop(self):
         print(self.aid, "optimization loop started")
         self.publish()
-
         while not self.done.done():
             await self.perceive()
-
             # update and publish are notably not
             # interruptible to prevent changes in data
             # during optimization step
@@ -288,6 +306,7 @@ class DecentralAgent(Agent):
         await self.send_message(msg, self.device_addr)
         await self.state_request_fut
 
+    '''
     async def create_initial_schedule(self):
         # schedule our infinitely running optimization loop
         # wait a couple seconds for first schedule
@@ -303,7 +322,22 @@ class DecentralAgent(Agent):
          #await self.get_device_state_update()
          self.schedule_instant_task(self.optimization_loop())
          await asyncio.sleep(5)
-         #await asyncio.sleep(5)
+         #await asyncio.sleep(5)'''
+
+    async def create_initial_schedule(self):
+        # schedule our infinitely running optimization loop
+        # wait a couple seconds for first schedule
+        # then return
+        self._start_optimization_loop()
+        await asyncio.sleep(5)
+        self.init_schedule_done.set_result(True)
+
+    async def reschedule(self):
+        self._stop_optimization_loop()
+        await asyncio.sleep(5)  # yield so cancel can propagate
+        self._start_optimization_loop()
+        print(self.aid, "rescheduling done")
+
     def add_fc_constraints(self, model, remaining_target):
         p_var = model.p_device
         n_steps = len(remaining_target)

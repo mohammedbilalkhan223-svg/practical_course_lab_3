@@ -152,7 +152,7 @@ def get_hil_scenarios():
     #device_failure = [-1, -1, 2, -1, 2, -1] #8 iv) a3 and a5 failing
     d_fail_time = device_failure
     #controller_failure= [-1, -1, -1, -1, -1, -1]
-    controller_failure = [7,-1, 5, -1, 5, -1] #8 i)a1 failing
+    controller_failure = [7,-1, -1, -1, -1, -1] #8 i)a1 failing
     #controller_failure = [-1, -1, -1, -1, 5, -1] #8 ii) a5 failing
     #controller_failure = [-1, -1, -1, 2, 2, -1] #8 iii) a4 & a5 failing
     #controller_failure = [-1, -1, 2, -1, 2, -1] #8 iv) a3 and a5 failing
@@ -169,8 +169,8 @@ def get_hil_scenarios():
             (2, 4): 0.9,
         }
         problem = deepcopy(SchedulingProblem(target, devices, c_dev, max_rel_rand))
-        #adjacency = make_fig2_adj(p_drop_agent_edges, device_failure)
-        adjacency = topology_with_varied_droprates(varied_drop_rates)
+        adjacency = make_fig2_adj(p_drop_agent_edges, device_failure)
+        #adjacency = topology_with_varied_droprates(varied_drop_rates)
         return (STEP_TIME_S, adjacency, problem, d_fail_time, hil_drop_rate, c_fail_time)
 
     # Scenario indices used by run_hil.py:
