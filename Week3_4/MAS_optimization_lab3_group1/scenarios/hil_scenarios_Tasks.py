@@ -16,7 +16,6 @@ else:
 # Global params
 # ------------------------------
 HIL_IP = "10.51.6.211"
-STEP_TIME_S = 1
 SCENARIO_NR = 0
 RNG_SEED = 1
 

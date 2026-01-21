@@ -17,7 +17,6 @@ else:
     STEP_TIME_S = 12
 
 HIL_IP = "10.51.6.211"
-STEP_TIME_S = 5
 SCENARIO_NR = 0
 RNG_SEED = 1
 
