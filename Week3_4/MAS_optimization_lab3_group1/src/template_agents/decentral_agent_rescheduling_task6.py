@@ -1,9 +1,20 @@
 from dataclasses import dataclass
 from mango import Agent, sender_addr
-from src.sim_environment.messages import *
+from src.sim_environment.messages import (
+    TargetUpdateMsg,
+    SetDoneMsg,
+    SetScheduleMsg,
+    SetScheduleReplyMsg,
+    NotifyReadyRequestMsg,
+    NotifyReadyMsg,
+    StateRequestMsg,
+    StateReplyMsg,
+    FailControllerMsg
+)
 import asyncio
 import logging
 import random
+import networkx as nx
 from copy import deepcopy
 from src.sim_environment.optimization_problem import SchedulingProblem
 from src.sim_environment.devices.abstract import AbstractDevice
@@ -48,7 +59,7 @@ class DecentralAgent(Agent):
         self.old_t = 0
         self.t = 0
         self.version = 0
-        self.original_target = deepcopy(target)
+        
 
         self.step_time_s = step_time_s
 
@@ -68,6 +79,59 @@ class DecentralAgent(Agent):
         self.info_collection_fut = None
         self.target_update_task = None
         self.failed = False
+        self.routing_table ={}
+
+        self.addr_to_node_id = {}
+
+    def get_next_hop(self, destination_addr):
+        """
+        Calculates the next hop on the path with the minimum packet loss rate.
+        """
+        g = self.context._container.graph #network graph from the container
+        
+        # Map addresses to NetworkX node IDs
+        source_node = self.addr_to_node_id[self.addr] #convert address to node id
+        dest_node = self.addr_to_node_id[destination_addr] #convert destination address to node id
+
+        # Find shortest path using 'loss_rate' as weight
+        # Dijkstra minimizes the sum of weights; if loss_rate is probability, 
+        # this minimizes the total "risk" across the path.
+        if destination_addr not in self.routing_table.keys():
+            path = nx.dijkstra_path(g, source=source_node, target=dest_node, weight='loss_rate')
+            self.routing_table[destination_addr] = path
+            print(self.aid, "calculated new path")
+        else:
+            path = self.routing_table[destination_addr]
+        print(self.aid, "routing table", self.routing_table)
+        #print(self.aid, "routing table: ", self.routing_table)
+        if len(path) < 2:
+            return None # Already there or unreachable
+
+        # The next hop is the second element in the path list (first is source)
+        next_hop_node_id = path[1]
+        
+        # Find the address corresponding to the node_id
+        # search the mapping for the address belonging to that ID
+        for addr, node_id in self.addr_to_node_id.items():
+            if node_id == next_hop_node_id:
+                return addr
+        return None
+
+    async def send_to_neighbors_reliably(self, msg):
+        """
+        Instead of sending to immediate neighbors only, it's ensured the message
+        is sent via the most reliable path to every other agent in the network.
+        """
+        # Get all agent addresses excluding self, observer, and device
+        all_agents = [addr for addr in self.addr_to_node_id.keys() 
+                      if addr != self.addr and addr != self.obs_addr and addr != self.device_addr]
+
+        for target_agent in self.neighbors():
+            next_hop = self.get_next_hop(target_agent)
+            if next_hop:
+                # wrap the message or just send it to the next hop
+                # For routing, sending to next_hop.
+                await self.send_message(msg, next_hop) # Todo
 
     def on_register(self):
         self.schedule_instant_task(self.create_initial_schedule())
@@ -122,8 +186,7 @@ class DecentralAgent(Agent):
             return
 
         if isinstance(content, SetDoneMsg) and is_observer:
-            if not self.done.done():
-                self.done.set_result(True)
+            self.done.set_result(True)
 
         if self.failed:
             # controller has exploded
@@ -135,8 +198,8 @@ class DecentralAgent(Agent):
             print(self.aid, "received target update")
             if self.target_update_task is not None and not self.target_update_task.done():
                 self.target_update_task.cancel()
-            self.target_update_task = self.schedule_instant_task(self.handle_target_update(content, meta))
 
+            self.target_update_task = self.schedule_instant_task(self.handle_target_update(content, meta))
 
         if isinstance(content, NotifyReadyRequestMsg) and is_observer:
             self.schedule_instant_task(self.handle_ready_request(sender))
@@ -172,7 +235,7 @@ class DecentralAgent(Agent):
 
         if isinstance(content, SetScheduleReplyMsg):
             # nothing for now
-            pass
+            print(self.aid, "received set schedule reply")
 
 
         if isinstance(content, FlexMsg):
@@ -187,7 +250,9 @@ class DecentralAgent(Agent):
 
             # we now know its a new message for our knowledge base
             self.working_memory[content.aid] = (content.version, content.schedule)
-            await self.send_to_neighbors(content)
+            # await self.send_to_neighbors(content)
+            # reliable routing to propagate information to all agents
+            await self.send_to_neighbors_reliably(content)
 
 
     async def handle_ready_request(self, sender):
@@ -199,22 +264,22 @@ class DecentralAgent(Agent):
         # NOTE: if your implemented logic does not need an explicit
         # reschedule call, you can comment this out and remove the 
         # reschedule method.
-        self.target = self.original_target
         await self.get_device_state_update()
         self.target[content.t] = content.value
         self.t = content.t
         remaining_target = self.target[content.t :]
-        self.schedule_instant_task(self.reschedule())
-        #self.schedule_instant_task(self.optimization_loop())
+        await self.reschedule(remaining_target, content.t)
 
     async def send_to_neighbors(self, msg):
-        #print(self.aid, "sending to neighbors")
+        print(self.aid, "sending to neighbors")
         for n in self.neighbors():
             await self.send_message(msg, n)
 
     def update_my_device_schedule(self):
+        print(self.aid, "update_my_device_schedule")
         msg = SetScheduleMsg(self.device_schedule)
         self.schedule_instant_message(msg, self.device_addr)
+        print(self.aid, "setScheduleMsg sent")
 
     async def handle_state_reply(self, content):
         self.device_state = content.state
@@ -233,76 +298,14 @@ class DecentralAgent(Agent):
             # during optimization step
             self.update()
             self.publish()
-            print(self.aid, "optimization loop finished")
             await asyncio.sleep(0.01)
-
+            print(self.aid, "optimization loop finished")
 
     def publish(self):
         self.version += 1
         msg = FlexMsg(self.aid, self.version, self.device_schedule)
-        self.schedule_instant_task(self.send_to_neighbors(msg))
+        self.schedule_instant_task(self.send_to_neighbors_reliably(msg))
 
-
-    def update(self):
-        print(self.aid, "update")
-        target = self.target
-        other_contributions = [0] * len(target)
-        for k in self.current_loop_memory.keys():
-            for i in range(len(target)):
-                other_contributions[i] += self.current_loop_memory[k][1][i]
-        remaining_target = [x - y for x, y in zip(self.target, other_contributions)][
-            self.t :
-        ]
-        remaining_target.append(0)
-
-        model = self.get_pyomo_model(remaining_target)
-        #pyo.SolverFactory("appsi_highs").solve(model)
-        pyo.SolverFactory('gurobi').solve(model)
-        data = list(model.p_device.extract_values().values())
-        # remove last value as it was only dummy for soc constraint
-        data = data[:-1]
-        self.device_schedule[self.t:] = data
-        self.update_my_device_schedule()
-
-    async def perceive(self):
-        # just busy wait for new information while passing control
-        while True:
-            if self.current_loop_memory != self.working_memory:
-                break
-
-            if self.t > self.old_t:
-                self.old_t = self.t
-                break
-
-            await asyncio.sleep(0.1)
-
-        # snapshot memory for this loop to not have to deal with
-        # changes during processing
-        self.current_loop_memory = self.working_memory
-
-    # NOTE: new convenience method to get the device state in one function call
-    async def get_device_state_update(self):
-        self.state_request_fut = asyncio.Future()     
-        msg = StateRequestMsg()
-        await self.send_message(msg, self.device_addr)
-        await self.state_request_fut
-
-    async def create_initial_schedule(self):
-        # schedule our infinitely running optimization loop
-        # wait a couple seconds for first schedule
-        # then return
-        self.schedule_instant_task(self.optimization_loop())
-        await asyncio.sleep(5)
-
-        # don't change this flag being set or the run script will hang
-        self.init_schedule_done.set_result(True)
-
-    async def reschedule(self):
-         # Add your rescheduling logic as necessary
-         #await self.get_device_state_update()
-         self.schedule_instant_task(self.optimization_loop())
-         await asyncio.sleep(5)
-         #await asyncio.sleep(5)
     def add_fc_constraints(self, model, remaining_target):
         p_var = model.p_device
         n_steps = len(remaining_target)
@@ -399,3 +402,65 @@ class DecentralAgent(Agent):
             model = self.add_fc_constraints(model, remaining_target)
 
         return model
+
+    def update(self):
+        print(self.aid, "update")
+        target = self.target
+        other_contributions = [0] * len(target)
+        for k in self.current_loop_memory.keys():
+            for i in range(len(target)):
+                other_contributions[i] += self.current_loop_memory[k][1][i]
+
+        remaining_target = [x - y for x, y in zip(self.target, other_contributions)][
+            self.t :
+        ]
+        remaining_target.append(0)
+
+        model = self.get_pyomo_model(remaining_target)
+        #pyo.SolverFactory("appsi_highs").solve(model)
+        pyo.SolverFactory('gurobi').solve(model)
+        data = list(model.p_device.extract_values().values())
+        # remove last value as it was only dummy for soc constraint
+        data = data[:-1]
+        self.device_schedule[self.t:] = data
+        self.update_my_device_schedule()
+
+    async def perceive(self):
+        # just busy wait for new information while passing control
+        while True:
+            if self.current_loop_memory != self.working_memory:
+                break
+
+            if self.t > self.old_t:
+                self.old_t = self.t
+                break
+
+            await asyncio.sleep(0.1)
+
+        # snapshot memory for this loop to not have to deal with
+        # changes during processing
+        self.current_loop_memory = self.working_memory
+
+    # NOTE: new convenience method to get the device state in one function call
+    async def get_device_state_update(self):
+        self.state_request_fut = asyncio.Future()     
+        msg = StateRequestMsg()
+        await self.send_message(msg, self.device_addr)
+        await self.state_request_fut
+
+    async def create_initial_schedule(self):
+        # schedule our infinitely running optimization loop
+        # wait a couple seconds for first schedule
+        # then return
+        self.schedule_instant_task(self.optimization_loop())
+        await asyncio.sleep(5)
+
+        # don't change this flag being set or the run script will hang
+        self.init_schedule_done.set_result(True)
+
+    async def reschedule(self, remaining_target, t):
+         # Add your rescheduling logic as necessary
+         #await self.get_device_state_update()
+         self.schedule_instant_task(self.optimization_loop())
+         await asyncio.sleep(5)
+         #await asyncio.sleep(5)

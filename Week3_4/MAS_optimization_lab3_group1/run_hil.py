@@ -6,23 +6,27 @@ from mango import run_with_tcp, AgentAddress, create_tcp_container, activate, cu
 
 import sys
 if len(sys.argv) > 2 and sys.argv[2] == "ideal":
-    from ..MAS_optimization_lab3_group1.src.sim_environment.devices.ideal import *
-    from ..MAS_optimization_lab3_group1.src.agent_setups.HIL_observer import DummyHILObserver as HILObserver
+    from src.sim_environment.devices.ideal import *
+    from src.agent_setups.HIL_observer import DummyHILObserver as HILObserver
 else:
-    from ..MAS_optimization_lab3_group1.src.sim_environment.devices.hil import *
-    from ..MAS_optimization_lab3_group1.src.agent_setups.HIL_observer import HILObserver
+    from src.sim_environment.devices.hil import *
+    from src.agent_setups.HIL_observer import HILObserver
 
-from ...Week3_4.MAS_optimization_lab3_group1.src.sim_environment.optimization_problem import *
+from src.sim_environment.optimization_problem import *
 
 # -------------------
 #from src.template_agents.decentral_agent_lab2 import DecentralAgent
-from decentral_agent_rescheduling_Task10 import DecentralAgent
+#from src.template_agents.decentral_agent_rescheduling import DecentralAgent
+#from src.template_agents.decentral_agent_Task4_rescheduling import DecentralAgent
+#from src.agent_setups.my_new_decentral_agent import DecentralAgent
+#from src.template_agents.decentral_agent_rescheduling_Task10 import DecentralAgent
+from src.template_agents.decentral_agent_rescheduling_task6 import DecentralAgent
 
-
-from ...Week3_4.MAS_optimization_lab3_group1.scenarios.hil_scenarios_Tasks import get_hil_scenarios, SCENARIO_NR, RNG_SEED
+from scenarios.hil_scenarios_Fig2 import get_hil_scenarios, SCENARIO_NR, RNG_SEED
+#from scenarios.hil_scenarios_Tasks import get_hil_scenarios, SCENARIO_NR, RNG_SEED
 # -------------------
 
-from messages import SCENARIO_CODEC, SetDoneMsg
+from src.sim_environment.messages import SCENARIO_CODEC, SetDoneMsg
 import networkx as nx
 
 import os
@@ -49,6 +53,7 @@ def con_addr(i):
 
 async def main():
     random.seed(1)
+
     step_time_s, _, problem, d_fail_time, hil_drop_rate, c_fail_time  = get_hil_scenarios()[SCENARIO_NR]
 
     c_proc = make_controllers_process()

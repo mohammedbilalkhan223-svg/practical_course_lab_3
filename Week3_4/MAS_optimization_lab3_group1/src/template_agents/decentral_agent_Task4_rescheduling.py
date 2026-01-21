@@ -1,6 +1,16 @@
 from dataclasses import dataclass
 from mango import Agent, sender_addr
-from src.sim_environment.messages import *
+from src.sim_environment.messages import (
+    TargetUpdateMsg,
+    SetDoneMsg,
+    SetScheduleMsg,
+    SetScheduleReplyMsg,
+    NotifyReadyRequestMsg,
+    NotifyReadyMsg,
+    StateRequestMsg,
+    StateReplyMsg,
+    FailControllerMsg
+)
 import asyncio
 import logging
 import random
@@ -48,8 +58,10 @@ class DecentralAgent(Agent):
         self.old_t = 0
         self.t = 0
         self.version = 0
-        self.original_target = deepcopy(target)
+        
 
+        # NOTE: controller agents have access to the step time now to consider it
+        # in their predictions on how device states will evolve
         self.step_time_s = step_time_s
 
         self.addr_to_node_id = {} # gets set outside after registering
@@ -122,8 +134,7 @@ class DecentralAgent(Agent):
             return
 
         if isinstance(content, SetDoneMsg) and is_observer:
-            if not self.done.done():
-                self.done.set_result(True)
+            self.done.set_result(True)
 
         if self.failed:
             # controller has exploded
@@ -132,11 +143,10 @@ class DecentralAgent(Agent):
         if isinstance(content, TargetUpdateMsg) and is_observer:
             # only do this if its not already active or
             # we get an asyncio/scheduler error!
-            print(self.aid, "received target update")
             if self.target_update_task is not None and not self.target_update_task.done():
                 self.target_update_task.cancel()
-            self.target_update_task = self.schedule_instant_task(self.handle_target_update(content, meta))
 
+            self.target_update_task = self.schedule_instant_task(self.handle_target_update(content, meta))
 
         if isinstance(content, NotifyReadyRequestMsg) and is_observer:
             self.schedule_instant_task(self.handle_ready_request(sender))
@@ -152,6 +162,10 @@ class DecentralAgent(Agent):
         self.schedule_instant_task(self.handle_any_message(content, meta))
 
     async def handle_any_message(self, content, meta):
+        if not hasattr(self, "_drop_rng"):
+            self._drop_rng = random.Random(123 + int(self.aid.split("_")[1]))
+            self._received = 0
+            self._dropped = 0
         sender = sender_addr(meta)
 
         is_neighbor = sender in self.neighbors()
@@ -162,8 +176,14 @@ class DecentralAgent(Agent):
         # -------------------------------------
         if is_neighbor:
             w = self.get_edge_loss_rate(sender) # probability between 0 and 1
-            if self.rng.random() <= w:
-                # packet got lost
+            self._received += 1
+            drop_now = (w > 0 and self._drop_rng.random() < w)
+            if drop_now:
+                self._dropped += 1
+            if self._received % 100 == 0:
+                print(f"{self.aid}: dropped {self._dropped}/{self._received} incoming msgs")
+
+            if drop_now:
                 return
 
             d = self.get_edge_delay(sender)
@@ -172,8 +192,8 @@ class DecentralAgent(Agent):
 
         if isinstance(content, SetScheduleReplyMsg):
             # nothing for now
+            # will become relevant in lab 3
             pass
-
 
         if isinstance(content, FlexMsg):
             if content.aid == self.aid:
@@ -199,16 +219,13 @@ class DecentralAgent(Agent):
         # NOTE: if your implemented logic does not need an explicit
         # reschedule call, you can comment this out and remove the 
         # reschedule method.
-        self.target = self.original_target
         await self.get_device_state_update()
         self.target[content.t] = content.value
         self.t = content.t
-        remaining_target = self.target[content.t :]
-        self.schedule_instant_task(self.reschedule())
-        #self.schedule_instant_task(self.optimization_loop())
+        # remaining_target = self.target[content.t :]
+        await self.reschedule()
 
     async def send_to_neighbors(self, msg):
-        #print(self.aid, "sending to neighbors")
         for n in self.neighbors():
             await self.send_message(msg, n)
 
@@ -222,7 +239,6 @@ class DecentralAgent(Agent):
             self.state_request_fut.set_result(True)
 
     async def optimization_loop(self):
-        print(self.aid, "optimization loop started")
         self.publish()
 
         while not self.done.done():
@@ -233,76 +249,13 @@ class DecentralAgent(Agent):
             # during optimization step
             self.update()
             self.publish()
-            print(self.aid, "optimization loop finished")
             await asyncio.sleep(0.01)
-
 
     def publish(self):
         self.version += 1
         msg = FlexMsg(self.aid, self.version, self.device_schedule)
         self.schedule_instant_task(self.send_to_neighbors(msg))
 
-
-    def update(self):
-        print(self.aid, "update")
-        target = self.target
-        other_contributions = [0] * len(target)
-        for k in self.current_loop_memory.keys():
-            for i in range(len(target)):
-                other_contributions[i] += self.current_loop_memory[k][1][i]
-        remaining_target = [x - y for x, y in zip(self.target, other_contributions)][
-            self.t :
-        ]
-        remaining_target.append(0)
-
-        model = self.get_pyomo_model(remaining_target)
-        #pyo.SolverFactory("appsi_highs").solve(model)
-        pyo.SolverFactory('gurobi').solve(model)
-        data = list(model.p_device.extract_values().values())
-        # remove last value as it was only dummy for soc constraint
-        data = data[:-1]
-        self.device_schedule[self.t:] = data
-        self.update_my_device_schedule()
-
-    async def perceive(self):
-        # just busy wait for new information while passing control
-        while True:
-            if self.current_loop_memory != self.working_memory:
-                break
-
-            if self.t > self.old_t:
-                self.old_t = self.t
-                break
-
-            await asyncio.sleep(0.1)
-
-        # snapshot memory for this loop to not have to deal with
-        # changes during processing
-        self.current_loop_memory = self.working_memory
-
-    # NOTE: new convenience method to get the device state in one function call
-    async def get_device_state_update(self):
-        self.state_request_fut = asyncio.Future()     
-        msg = StateRequestMsg()
-        await self.send_message(msg, self.device_addr)
-        await self.state_request_fut
-
-    async def create_initial_schedule(self):
-        # schedule our infinitely running optimization loop
-        # wait a couple seconds for first schedule
-        # then return
-        self.schedule_instant_task(self.optimization_loop())
-        await asyncio.sleep(5)
-
-        # don't change this flag being set or the run script will hang
-        self.init_schedule_done.set_result(True)
-
-    async def reschedule(self):
-         # Add your rescheduling logic as necessary
-         #await self.get_device_state_update()
-         self.schedule_instant_task(self.optimization_loop())
-         await asyncio.sleep(5)
-         #await asyncio.sleep(5)
     def add_fc_constraints(self, model, remaining_target):
         p_var = model.p_device
         n_steps = len(remaining_target)
@@ -382,7 +335,7 @@ class DecentralAgent(Agent):
             )
 
         obj_f = sum(model.problem_cost[t] + model.device_cost[t] for t in range(n_steps-1))
-        model.goal = pyo.Objective(expr=obj_f)
+        model.goal = pyo.Objective(expr=obj_f, sense=pyo.minimize)
 
         return model
 
@@ -399,3 +352,62 @@ class DecentralAgent(Agent):
             model = self.add_fc_constraints(model, remaining_target)
 
         return model
+
+    def update(self):
+        target = self.target
+        other_contributions = [0] * len(target)
+        for k in self.current_loop_memory.keys():
+            for i in range(len(target)):
+                other_contributions[i] += self.current_loop_memory[k][1][i]
+
+        remaining_target = [x - y for x, y in zip(self.target, other_contributions)][
+            self.t :
+        ]
+        remaining_target.append(0)
+
+        model = self.get_pyomo_model(remaining_target)
+        pyo.SolverFactory("appsi_highs").solve(model)
+
+        data = list(model.p_device.extract_values().values())
+        # remove last value as it was only dummy for soc constraint
+        data = data[:-1]
+        self.device_schedule[self.t:] = data
+
+        self.update_my_device_schedule()
+
+    async def perceive(self):
+        # just busy wait for new information while passing control
+        while True:
+            if self.current_loop_memory != self.working_memory:
+                break
+
+            if self.t > self.old_t:
+                self.old_t = self.t
+                break
+
+            await asyncio.sleep(0.1)
+
+        # snapshot memory for this loop to not have to deal with
+        # changes during processing
+        self.current_loop_memory = self.working_memory
+
+    # NOTE: new convenience method to get the device state in one function call
+    async def get_device_state_update(self):
+        self.state_request_fut = asyncio.Future()     
+        msg = StateRequestMsg()
+        await self.send_message(msg, self.device_addr)
+        await self.state_request_fut
+
+    async def create_initial_schedule(self):
+        # schedule our infinitely running optimization loop
+        # wait a couple seconds for first schedule
+        # then return
+        self.schedule_instant_task(self.optimization_loop())
+        await asyncio.sleep(5)
+
+        # don't change this flag being set or the run script will hang
+        self.init_schedule_done.set_result(True)
+
+    async def reschedule(self):
+        self.schedule_instant_task(self.optimization_loop())
+        await asyncio.sleep(5)

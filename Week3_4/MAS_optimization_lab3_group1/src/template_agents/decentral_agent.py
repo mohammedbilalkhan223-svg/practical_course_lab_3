@@ -22,7 +22,6 @@ if len(sys.argv) > 2 and sys.argv[2] == "ideal":
     from src.sim_environment.devices.ideal import *
 else:
     from src.sim_environment.devices.hil import *
-import pyomo.environ as pyo
 
 """
 New decentral agent with some hacky things to make topology edge weight tracking work:
@@ -32,13 +31,6 @@ New decentral agent with some hacky things to make topology edge weight tracking
 - agents keep track of their own ID in that networkx graph via the node_id field
 - edge weight can then be gotten for an arbitrary sender via the get_edge_weight function
 """
-
-# renegotiation for single time step on target update
-@dataclass
-class FlexMsg:
-    aid: str
-    version: int
-    schedule: list[float]
 
 class DecentralAgent(Agent):
     def __init__(
@@ -58,8 +50,8 @@ class DecentralAgent(Agent):
         self.old_t = 0
         self.t = 0
         self.version = 0
-        self.original_target = deepcopy(target)
-        
+        self.target_update_task = None
+        self.failed = False
 
         # NOTE: controller agents have access to the step time now to consider it
         # in their predictions on how device states will evolve
@@ -71,16 +63,11 @@ class DecentralAgent(Agent):
         # neighbors can now be accessed by
         # self.neighbors() -> using mangos topology feature
 
-        self.working_memory = {}
-        self.current_loop_memory = {}
-
         # various futures objects for control flow
         self.init_schedule_done = asyncio.Future()
         self.done = asyncio.Future()
         self.state_request_fut = asyncio.Future()
         self.info_collection_fut = None
-        self.target_update_task = None
-        self.failed = False
 
     def on_register(self):
         self.schedule_instant_task(self.create_initial_schedule())
@@ -133,7 +120,7 @@ class DecentralAgent(Agent):
         if isinstance(content, FailControllerMsg) and is_observer:
             self.failed = True
             return
-
+        
         if isinstance(content, SetDoneMsg) and is_observer:
             self.done.set_result(True)
 
@@ -186,20 +173,6 @@ class DecentralAgent(Agent):
             # will become relevant in lab 3
             pass
 
-        if isinstance(content, FlexMsg):
-            if content.aid == self.aid:
-                return
-
-            if (
-                content.aid in self.working_memory.keys()
-                and self.working_memory[content.aid][0] >= content.version
-            ):
-                return
-
-            # we now know its a new message for our knowledge base
-            self.working_memory[content.aid] = (content.version, content.schedule)
-            await self.send_to_neighbors(content)
-
 
     async def handle_ready_request(self, sender):
         await self.init_schedule_done
@@ -213,9 +186,8 @@ class DecentralAgent(Agent):
         await self.get_device_state_update()
         self.target[content.t] = content.value
         self.t = content.t
-        self.target = self.target[content.t :]
-        self.schedule_instant_task(self.optimization_loop())
-        # await self.reschedule(remaining_target, content.t)
+        remaining_target = self.target[content.t :]
+        await self.reschedule(remaining_target, content.t)
 
     async def send_to_neighbors(self, msg):
         for n in self.neighbors():
@@ -230,159 +202,6 @@ class DecentralAgent(Agent):
         if not self.state_request_fut.done():
             self.state_request_fut.set_result(True)
 
-    async def optimization_loop(self):
-        self.publish()
-
-        while not self.done.done():
-            await self.perceive()
-
-            # update and publish are notably not
-            # interruptible to prevent changes in data
-            # during optimization step
-            self.update()
-            self.publish()
-            await asyncio.sleep(0.01)
-
-    def publish(self):
-        self.version += 1
-        msg = FlexMsg(self.aid, self.version, self.device_schedule)
-        self.schedule_instant_task(self.send_to_neighbors(msg))
-
-    def add_fc_constraints(self, model, remaining_target):
-        p_var = model.p_device
-        n_steps = len(remaining_target)
-        fuel_state = self.device_state
-
-        model.fuel_var = pyo.Var(
-            range(n_steps),
-            domain=pyo.NonNegativeReals,
-            bounds=(0, fuel_state.fuel_amount),
-        )
-
-        # fuel evolution constraint
-        for t in range(n_steps - 1):
-            model.problem_constraints.add(expr=model.fuel_var[t + 1] == model.fuel_var[t] - p_var[t])
-
-        for t in range(n_steps):
-            # no magic with fuel
-            model.problem_constraints.add(expr=model.fuel_var[t] >= p_var[t])
-
-        return model
-
-    def add_load_constraints(self, model, remaining_target):
-        # nothing to do here
-        return model
-
-    def add_bat_constraints(self, model, remaining_target):
-        # soc evolution
-        p_var = model.p_device
-        n_steps = len(remaining_target)
-        bat_state = self.device_state
-
-        model.bat_var = pyo.Var(
-            range(n_steps),
-            domain=pyo.NonNegativeReals,
-            bounds=(0, bat_state.size),
-            )
-        for t in range(n_steps - 1):
-            model.problem_constraints.add(
-                expr=model.bat_var[t + 1] == model.bat_var[t] - p_var[t])
-
-        model.problem_constraints.add(expr=model.bat_var[0] == bat_state.soc * bat_state.size)
-        model.problem_constraints.add(expr=model.bat_var[n_steps-1] == bat_state.final_soc * bat_state.size)
-
-        return model
-
-    def add_problem_constraints(self, model, remaining_target):
-        # problem constraints
-        p_min = self.device_state.p_min
-        p_max = self.device_state.p_max
-        n_steps = len(remaining_target)
-        model.problem_constraints = pyo.ConstraintList()
-        model.p_device = pyo.Var(range(n_steps), domain=pyo.Reals, bounds=(p_min, p_max))
-
-        model.problem_cost = pyo.Var(
-            range(n_steps), domain=pyo.NonNegativeReals, initialize=0
-        )
-        model.device_cost = pyo.Var(
-            range(n_steps), domain=pyo.NonNegativeReals, initialize=0
-        )
-
-        model.p_abs_diff = pyo.Var(
-            range(n_steps), domain=pyo.NonNegativeReals, initialize=0
-        )
-        for t in range(n_steps):
-            # NOTE: this abs construction works only because we are minimizing costs!
-            model.problem_constraints.add(
-                expr=model.p_abs_diff[t] >= (model.p_device[t] - remaining_target[t])
-            )
-            model.problem_constraints.add(
-                expr=model.p_abs_diff[t] >= -(model.p_device[t] - remaining_target[t])
-            )
-            model.problem_constraints.add(
-                expr=model.problem_cost[t] == model.p_abs_diff[t] * self.c_dev
-            )
-            model.problem_constraints.add(
-                expr=model.device_cost[t] == model.p_abs_diff[t] * self.device_c_op
-            )
-
-        obj_f = sum(model.problem_cost[t] + model.device_cost[t] for t in range(n_steps-1))
-        model.goal = pyo.Objective(expr=obj_f, sense=pyo.minimize)
-
-        return model
-
-    def get_pyomo_model(self, remaining_target):
-        model = pyo.ConcreteModel()
-        model = self.add_problem_constraints(model, remaining_target)
-
-        # device constraints
-        if isinstance(self.device_state, IdealBatteryState):
-            model = self.add_bat_constraints(model, remaining_target)
-        if isinstance(self.device_state, IdealLoadState):
-            model = self.add_load_constraints(model, remaining_target)
-        if isinstance(self.device_state, IdealFuelCellState):
-            model = self.add_fc_constraints(model, remaining_target)
-
-        return model
-
-    def update(self):
-        target = self.target
-        other_contributions = [0] * len(target)
-        for k in self.current_loop_memory.keys():
-            for i in range(len(target)):
-                other_contributions[i] += self.current_loop_memory[k][1][i]
-
-        remaining_target = [x - y for x, y in zip(self.target, other_contributions)][
-            self.t :
-        ]
-        remaining_target.append(0)
-
-        model = self.get_pyomo_model(remaining_target)
-        pyo.SolverFactory("appsi_highs").solve(model)
-
-        data = list(model.p_device.extract_values().values())
-        # remove last value as it was only dummy for soc constraint
-        data = data[:-1]
-        self.device_schedule[self.t:] = data
-
-        self.update_my_device_schedule()
-
-    async def perceive(self):
-        # just busy wait for new information while passing control
-        while True:
-            if self.current_loop_memory != self.working_memory:
-                break
-
-            if self.t > self.old_t:
-                self.old_t = self.t
-                break
-
-            await asyncio.sleep(0.1)
-
-        # snapshot memory for this loop to not have to deal with
-        # changes during processing
-        self.current_loop_memory = self.working_memory
-
     # NOTE: new convenience method to get the device state in one function call
     async def get_device_state_update(self):
         self.state_request_fut = asyncio.Future()     
@@ -391,16 +210,12 @@ class DecentralAgent(Agent):
         await self.state_request_fut
 
     async def create_initial_schedule(self):
-        # schedule our infinitely running optimization loop
-        # wait a couple seconds for first schedule
-        # then return
-        self.schedule_instant_task(self.optimization_loop())
-        await asyncio.sleep(5)
+        # TODO implement your initial schedule computation
 
         # don't change this flag being set or the run script will hang
         self.init_schedule_done.set_result(True)
 
-    # async def reschedule(self, remaining_target, t):
-    #     # TODO
-    #     # Add your rescheduling logic as necessary
-    #     self.update_my_device_schedule()
+    async def reschedule(self, remaining_target, t):
+        # TODO
+        # Add your rescheduling logic as necessary
+        self.update_my_device_schedule()

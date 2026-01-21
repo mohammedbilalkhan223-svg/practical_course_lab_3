@@ -80,6 +80,29 @@ class DecentralAgent(Agent):
         self._hb_started = False
         self._hb_periodic_handle = None  # <-- important for clean shutdown
 
+        # -------------------------------
+        # ✅ MINIMAL FIX: keep only ONE optimization task
+        # -------------------------------
+        self._opt_task = None
+
+    # -------------------------------
+    # ✅ MINIMAL FIX helpers
+    # -------------------------------
+    def _start_optimization_loop(self):
+        # start only if not already running
+        if self._opt_task is not None and not self._opt_task.done():
+            return
+        self._opt_task = self.schedule_instant_task(self.optimization_loop())
+
+    def _stop_optimization_loop(self):
+        if self._opt_task is None:
+            return
+        try:
+            if not self._opt_task.done():
+                self._opt_task.cancel()
+        except Exception:
+            pass
+
     def on_register(self):
         self.schedule_instant_task(self.create_initial_schedule())
         self.schedule_instant_task(self._start_heartbeat_when_ready())
@@ -184,11 +207,15 @@ class DecentralAgent(Agent):
         # observer control
         if isinstance(content, FailControllerMsg) and is_observer:
             self.failed = True
+            # ✅ MINIMAL FIX: stop optimization so shutdown doesn't explode
+            self._stop_optimization_loop()
             return
 
         if isinstance(content, SetDoneMsg) and is_observer:
             if not self.done.done():
                 self.done.set_result(True)
+            # ✅ MINIMAL FIX: stop optimization so shutdown doesn't explode
+            self._stop_optimization_loop()
             return
 
         if self.failed:
@@ -407,12 +434,15 @@ class DecentralAgent(Agent):
         await self.state_request_fut
 
     async def create_initial_schedule(self):
-        self.schedule_instant_task(self.optimization_loop())
+        # ✅ MINIMAL FIX: start optimization loop only once
+        self._start_optimization_loop()
         await asyncio.sleep(5)
         self.init_schedule_done.set_result(True)
 
     async def reschedule(self):
-         self.schedule_instant_task(self.optimization_loop())
-         #print(self.aid, "waiting for 5 sec")
-         #await asyncio.sleep(3)
-         print(self.aid, "rescheduling done")
+        # ✅ MINIMAL FIX: stop old loop, start new one (prevents multiple loops & coroutine errors)
+        self._stop_optimization_loop()
+        await asyncio.sleep(0)  # yield so cancel can propagate
+        self._start_optimization_loop()
+        print(self.aid, "rescheduling done")
+

@@ -265,5 +265,48 @@ def get_hil_scenarios():
     p12 = _base_problem_and_target()
     d_fail_time12 = [-1, -1, -1, -1, MID_T, MID_T]
     scenarios.append((STEP_TIME_S, base_adj, p12, d_fail_time12, base_hil_drop, base_c_fail))
+    
+    
+    # =====================================================================
+    # Task 10 — Controller Failures (Figure 2 ring, no packet drops)
+    # c_fail_time[i] == timestep when controller i fails (stops negotiation)
+    # d_fail_time == no device failures here
+    # =====================================================================
+
+    
+    
+    base_adj = _ring_topology(0.0)
+    base_hil_drop = _no_hil_drops()
+    base_d_fail = [-1, -1, -1, -1, -1, -1]
+
+    EARLY_T = 1
+    MID_T   = 6
+
+    # --- s13: controller 0 fails early ---
+    p13 = _base_problem_and_target()
+    c_fail_time13 = [EARLY_T, -1, -1, -1, -1, -1]
+    scenarios.append((STEP_TIME_S, base_adj, p13, base_d_fail, base_hil_drop, c_fail_time13))
+
+    # --- s14: controller 0 fails mid-run ---
+    p14 = _base_problem_and_target()
+    c_fail_time14 = [MID_T, -1, -1, -1, -1, -1]
+    scenarios.append((STEP_TIME_S, base_adj, p14, base_d_fail, base_hil_drop, c_fail_time14))
+
+    # --- s15: controller 2 fails early (to test neighbors con_1 and con_3 detection) ---
+    p15 = _base_problem_and_target()
+    c_fail_time15 = [-1, -1, EARLY_T, -1, -1, -1]
+    scenarios.append((STEP_TIME_S, base_adj, p15, base_d_fail, base_hil_drop, c_fail_time15))
+
+    # --- s16: controller 2 fails mid-run ---
+    p16 = _base_problem_and_target()
+    c_fail_time16 = [-1, -1, MID_T, -1, -1, -1]
+    scenarios.append((STEP_TIME_S, base_adj, p16, base_d_fail, base_hil_drop, c_fail_time16))
+
+    # --- s17 (optional): two neighboring controllers fail (hard case) ---
+    # con_1 fails at t=1 and con_2 fails at t=3
+    p17 = _base_problem_and_target()
+    c_fail_time17 = [-1, 1, 3, -1, -1, -1]
+    scenarios.append((STEP_TIME_S, base_adj, p17, base_d_fail, base_hil_drop, c_fail_time17))
+
 
     return scenarios
