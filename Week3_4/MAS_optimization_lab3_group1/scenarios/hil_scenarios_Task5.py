@@ -1,11 +1,11 @@
 from copy import deepcopy
 
 from src.sim_environment.optimization_problem import SchedulingProblem
-from scenarios.hil_scenarios_Task3 import get_hil_device_specs
+from scenarios.hil_scenarios_Tasks import get_hil_device_specs
 
 # Define locally (same style as other scenario files)
 unit = kW = 10**3
-STEP_TIME_S = 1
+STEP_TIME_S = 12
 
 # Required by run_hil.py
 SCENARIO_NR = 0
@@ -64,7 +64,7 @@ def get_hil_scenarios():
         [0, 0, 0, 0, 0, 0],
     ]
 
-    # Star (hub = agent 3)
+    # Star (hub = agent 3/a4)
     star = [
         [-1, -1, -1, 0, -1, -1],
         [-1, -1, -1, 0, -1, -1],
@@ -74,7 +74,7 @@ def get_hil_scenarios():
         [-1, -1, -1, 0, -1, -1],
     ]
 
-    losses = [0.30, 0.40, 0.60]
+    losses = [0.10, 0.30, 0.60]
     scenarios = []
 
     # Ring

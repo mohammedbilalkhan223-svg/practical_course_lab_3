@@ -16,8 +16,8 @@ from src.sim_environment.optimization_problem import *
 
 # -------------------
 #from src.template_agents.decentral_agent_lab2 import DecentralAgent
-from src.template_agents.decentral_agent_rescheduling import DecentralAgent
-#from src.template_agents.decentral_agent_Task4_rescheduling import DecentralAgent
+#from src.template_agents.decentral_agent_rescheduling import DecentralAgent
+from src.template_agents.decentral_agent_Task4_rescheduling import DecentralAgent
 #from src.agent_setups.my_new_decentral_agent import DecentralAgent
 #from src.template_agents.decentral_agent_rescheduling_Task10 import DecentralAgent
 #from src.template_agents.decentral_agent_rescheduling_task6 import DecentralAgent
