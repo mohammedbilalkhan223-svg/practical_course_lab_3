@@ -152,7 +152,7 @@ def get_hil_scenarios():
     #device_failure = [-1, -1, 2, -1, 2, -1] #8 iv) a3 and a5 failing
     d_fail_time = device_failure
     #controller_failure= [-1, -1, -1, -1, -1, -1]
-    controller_failure = [7,-1, -1, -1, -1, -1] #8 i)a1 failing
+    controller_failure = [7,-1, 5, -1, 5, -1] #8 i)a1 failing
     #controller_failure = [-1, -1, -1, -1, 5, -1] #8 ii) a5 failing
     #controller_failure = [-1, -1, -1, 2, 2, -1] #8 iii) a4 & a5 failing
     #controller_failure = [-1, -1, 2, -1, 2, -1] #8 iv) a3 and a5 failing

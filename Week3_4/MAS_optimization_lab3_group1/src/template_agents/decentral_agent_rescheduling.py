@@ -118,6 +118,7 @@ class DecentralAgent(Agent):
         # Device messages are delayed or dropped on the device side.
         # -------------------------------------
         if isinstance(content, FailControllerMsg) and is_observer:
+            print(self.aid, "controller failed")
             self.failed = True
             return
 

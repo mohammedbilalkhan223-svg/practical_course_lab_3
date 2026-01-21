@@ -131,7 +131,7 @@ class DecentralAgent(Agent):
             if next_hop:
                 # wrap the message or just send it to the next hop
                 # For routing, sending to next_hop.
-                await self.send_message(msg, next_hop) # Todo
+                await self.send_message(msg, next_hop) # Todo include message forwarding to destination if not direct path is best
 
     def on_register(self):
         self.schedule_instant_task(self.create_initial_schedule())
