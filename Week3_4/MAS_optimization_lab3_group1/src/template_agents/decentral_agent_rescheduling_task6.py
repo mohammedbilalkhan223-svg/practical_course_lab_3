@@ -40,6 +40,7 @@ class FlexMsg:
     aid: str
     version: int
     schedule: list[float]
+    destination_agent: object
 
 class DecentralAgent(Agent):
     def __init__(
@@ -102,7 +103,7 @@ class DecentralAgent(Agent):
             print(self.aid, "calculated new path")
         else:
             path = self.routing_table[destination_addr]
-        print(self.aid, "routing table", self.routing_table)
+        #print(self.aid, "routing table", self.routing_table)
         #print(self.aid, "routing table: ", self.routing_table)
         if len(path) < 2:
             return None # Already there or unreachable
@@ -117,21 +118,18 @@ class DecentralAgent(Agent):
                 return addr
         return None
 
-    async def send_to_neighbors_reliably(self, msg):
+    async def send_to_neighbors_reliably(self, msg, destination_agent):
         """
         Instead of sending to immediate neighbors only, it's ensured the message
         is sent via the most reliable path to every other agent in the network.
         """
         # Get all agent addresses excluding self, observer, and device
-        all_agents = [addr for addr in self.addr_to_node_id.keys() 
-                      if addr != self.addr and addr != self.obs_addr and addr != self.device_addr]
-
-        for target_agent in self.neighbors():
-            next_hop = self.get_next_hop(target_agent)
-            if next_hop:
-                # wrap the message or just send it to the next hop
-                # For routing, sending to next_hop.
-                await self.send_message(msg, next_hop) # Todo include message forwarding to destination if not direct path is best
+        next_hop = self.get_next_hop(destination_agent)
+        print(self.aid, "sending message via next_hop: ", next_hop)
+        if next_hop:
+            # wrap the message or just send it to the next hop
+            # For routing, sending to next_hop.
+            await self.send_message(msg, next_hop)
 
     def on_register(self):
         self.schedule_instant_task(self.create_initial_schedule())
@@ -232,27 +230,27 @@ class DecentralAgent(Agent):
             d = self.get_edge_delay(sender)
             await asyncio.sleep(d)
 
-
-        if isinstance(content, SetScheduleReplyMsg):
-            # nothing for now
-            print(self.aid, "received set schedule reply")
-
-
         if isinstance(content, FlexMsg):
-            if content.aid == self.aid:
-                return
+            if content.destination_agent != self.addr:
+                print(self.aid, "received flex message not for me, forwarding it to:", content.destination_agent)
+                msg = FlexMsg(content.aid, content.version, content.schedule, content.destination_agent)
+                await self.send_to_neighbors_reliably(msg, content.destination_agent)
+            else:
+                if content.aid == self.aid:
+                    return
 
-            if (
-                content.aid in self.working_memory.keys()
-                and self.working_memory[content.aid][0] >= content.version
-            ):
-                return
+                if (
+                    content.aid in self.working_memory.keys()
+                    and self.working_memory[content.aid][0] >= content.version
+                ):
+                    return
 
-            # we now know its a new message for our knowledge base
-            self.working_memory[content.aid] = (content.version, content.schedule)
-            # await self.send_to_neighbors(content)
-            # reliable routing to propagate information to all agents
-            await self.send_to_neighbors_reliably(content)
+                # we now know its a new message for our knowledge base
+                self.working_memory[content.aid] = (content.version, content.schedule)
+                # await self.send_to_neighbors(content)
+                # reliable routing to propagate information to all agents
+                for neighbor in self.neighbors():
+                    await self.send_to_neighbors_reliably(content, neighbor)
 
 
     async def handle_ready_request(self, sender):
@@ -269,11 +267,11 @@ class DecentralAgent(Agent):
         self.t = content.t
         remaining_target = self.target[content.t :]
         await self.reschedule(remaining_target, content.t)
-
+    '''
     async def send_to_neighbors(self, msg):
         print(self.aid, "sending to neighbors")
         for n in self.neighbors():
-            await self.send_message(msg, n)
+            await self.send_to_neighbors_reliably(msg, n)'''
 
     def update_my_device_schedule(self):
         print(self.aid, "update_my_device_schedule")
@@ -303,8 +301,9 @@ class DecentralAgent(Agent):
 
     def publish(self):
         self.version += 1
-        msg = FlexMsg(self.aid, self.version, self.device_schedule)
-        self.schedule_instant_task(self.send_to_neighbors_reliably(msg))
+        for neighbor in self.neighbors():
+            msg = FlexMsg(self.aid, self.version, self.device_schedule, neighbor)
+            self.schedule_instant_task(self.send_to_neighbors_reliably(msg, neighbor))
 
     def add_fc_constraints(self, model, remaining_target):
         p_var = model.p_device

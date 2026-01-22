@@ -10,7 +10,7 @@ else:
 
 HIL_IP = "10.51.6.211"   # <-- set this to your Typhoon HIL IP
 
-STEP_TIME_S = 12
+STEP_TIME_S = 30
 SCENARIO_NR = 0
 RNG_SEED = 1
 
@@ -163,10 +163,14 @@ def get_hil_scenarios():
 
     def make_scenario(p_drop_agent_edges: float):
         varied_drop_rates = {
-            (0, 1): 0.05,  # Low drop rate between nodes 0 and 1
+            (0, 1): 0.1,  # Low drop rate between nodes 0 and 1
             (1, 2): 0.1,  # Higher drop rate between nodes 1 and 2
             (1, 4): 0.1,  # Even higher drop rate between nodes 3 and 5
-            (2, 4): 0.9,
+            (2, 4): 0.7,
+            (0, 2): 0.1,  # Low drop rate between nodes 0 and 1
+            (1, 3): 0.1,  # Higher drop rate between nodes 1 and 2
+            (3, 4): 0.1,  # Even higher drop rate between nodes 3 and 5
+            (5, 4): 0.1,
         }
         problem = deepcopy(SchedulingProblem(target, devices, c_dev, max_rel_rand))
         adjacency = make_fig2_adj(p_drop_agent_edges, device_failure)

@@ -142,7 +142,6 @@ class DecentralAgent(Agent):
         if isinstance(content, SetDoneMsg) and is_observer:
             if not self.done.done():
                 self.done.set_result(True)
-            # ✅ MINIMAL FIX: stop optimization so shutdown doesn't explode
             self._stop_optimization_loop()
             return
 
@@ -305,24 +304,6 @@ class DecentralAgent(Agent):
         msg = StateRequestMsg()
         await self.send_message(msg, self.device_addr)
         await self.state_request_fut
-
-    '''
-    async def create_initial_schedule(self):
-        # schedule our infinitely running optimization loop
-        # wait a couple seconds for first schedule
-        # then return
-        self.schedule_instant_task(self.optimization_loop())
-        await asyncio.sleep(5)
-
-        # don't change this flag being set or the run script will hang
-        self.init_schedule_done.set_result(True)
-
-    async def reschedule(self):
-         # Add your rescheduling logic as necessary
-         #await self.get_device_state_update()
-         self.schedule_instant_task(self.optimization_loop())
-         await asyncio.sleep(5)
-         #await asyncio.sleep(5)'''
 
     async def create_initial_schedule(self):
         # schedule our infinitely running optimization loop

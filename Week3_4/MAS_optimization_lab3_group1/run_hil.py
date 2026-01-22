@@ -15,15 +15,15 @@ else:
 from src.sim_environment.optimization_problem import *
 
 # -------------------
-#from src.template_agents.decentral_agent_lab2 import DecentralAgent
-#from src.template_agents.decentral_agent_rescheduling import DecentralAgent
-from src.template_agents.decentral_agent_rescheduling_Task4 import DecentralAgent
-#from src.agent_setups.my_new_decentral_agent import DecentralAgent
-#from src.template_agents.decentral_agent_rescheduling_Task10 import DecentralAgent
-#from src.template_agents.decentral_agent_rescheduling_task6 import DecentralAgent
+#from src.template_agents.decentral_agent_lab2 import DecentralAgent #to run agent from Lab 2 with Particle Swarm Optimization
+from src.template_agents.decentral_agent_rescheduling import DecentralAgent #to run the 'normal' agent adjusted from Jens' agent
+#from src.agent_setups.my_new_decentral_agent import DecentralAgent #Jens' agent
+#from src.template_agents.decentral_agent_rescheduling_Task10 import DecentralAgent #adjusted agent for task 10 including countermeasures
+#from src.template_agents.decentral_agent_rescheduling_Task10_freeze import DecentralAgent #adjusted agent for task 10 including countermeasures
+#from src.template_agents.decentral_agent_rescheduling_task6 import DecentralAgent # To run agent with routing via least package drop path
 
-from scenarios.hil_scenarios_Fig2 import get_hil_scenarios, SCENARIO_NR, RNG_SEED
-#from scenarios.hil_scenarios_Tasks import get_hil_scenarios, SCENARIO_NR, RNG_SEED
+from scenarios.hil_scenarios_Fig2 import get_hil_scenarios, SCENARIO_NR, RNG_SEED #Topology given in figure 2 in the instruction
+#from scenarios.hil_scenarios_Tasks import get_hil_scenarios, SCENARIO_NR, RNG_SEED #to run all other scenarios
 # -------------------
 
 from src.sim_environment.messages import SCENARIO_CODEC, SetDoneMsg
